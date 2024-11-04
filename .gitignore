@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+env/
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Unit test / coverage reports
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Exclude test data directory
+test_data/
+
+# IDE/Editor files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Local environment files
+.env
+*.env
+
+# Documentation build artifacts
+docs/_build/
