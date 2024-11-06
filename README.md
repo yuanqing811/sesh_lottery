@@ -3,8 +3,6 @@
 A Python-based tool for managing and conducting a lottery system for event attendees,
 enabling priority-based selection and efficient session handling.
 
-Here's a background section for the **PAPC Lottery** README:
-
 ---
 
 ## Background

@@ -1,31 +1,38 @@
 import re
 import pandas as pd
+from enum import Enum
+import datetime
 
+
+# defining string constants
 START_DATE = 'start date'
 END_DATE = 'end date'
 EVENT_NAME = 'name'
+EVENT_TYPE = 'type'
 RSVPER_NAMES = 'rsvpers'
 LOTTERY = 'Lottery'
 ATTENDEES = 'Attendees'
 WAITLIST = 'Attendees Waitlist'
 
 SESH_CLINIC_EVENT_TOKEN = r'clinic'
+SESH_RR_EVENT_TOKEN = 'round robin'
 SESH_CANCELLED_EVENT_TOKEN = r'CANCELLED'
 
 # defining regex
-cancellation_reason = r'\([^)]+\)'  # capture cancellation in parenthesis
-cancelled_event_name_regex = rf'^\s*{SESH_CANCELLED_EVENT_TOKEN}\s+(?:\-\s*)?(.+)\s*$'
+CANCELLATION_REASON_REGEX = r'\([^)]+\)\s*'  # capture cancellation reason in parenthesis
+CANCELLED_EVENT_NAME_REGEX = rf'{SESH_CANCELLED_EVENT_TOKEN}\s+(?:{CANCELLATION_REASON_REGEX})?(?:\-\s*)?([^-]+)\s*'
+
+
+class EventType(Enum):
+    CLINIC = 'clinic'
+    ROUNDROBIN = 'round robin'
+    BALL_MACHINE_SESSION = 'Ball Machine Session'
+    DUPR_MATCHES = 'DUPR Matches'
+    GETTING_STARTED = 'Getting Started'
+    OTHER = 'other'
 
 
 class SeshData:
-    START_DATE = 'start date'
-    END_DATE = 'end date'
-    EVENT_NAME = 'name'
-    RSVPER_NAMES = 'rsvpers'
-    LOTTERY = 'Lottery'
-    ATTENDEES = 'Attendees'
-    WAITLIST = 'Attendees Waitlist'
-
     # Regular expression to capture each section
     # Define patterns for readability
     # Pattern for names, allowing for quoted nicknames inside names
@@ -51,34 +58,32 @@ class SeshData:
         (?=\s*(?:,\s*{next_section_header_pattern})|$)  	# Lookahead for the next section header or end of string
         """
 
-    def __init__(self, filename="test_data/test_data.csv", debug=False):
+    def __init__(self, filename="test_data/test_data.csv"):
         if not filename.endswith('.csv'):
             raise Exception('incorrect file type, please enter a csv filename that ends with .csv')
 
-        # Load the CSV file into a DataFrame, if thest
+        # Load the CSV file into a DataFrame
         try:
             self.df = pd.read_csv(filename)
-        except:
-            raise TypeError('cannot load the CSV file with file path %s, please make sure the file exists' % filename)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File '{filename}' not found. Please check the file path.")
+        except pd.errors.EmptyDataError:
+            raise ValueError(f"The file '{filename}' is empty.")
+        except pd.errors.ParserError:
+            raise ValueError(f"Error parsing '{filename}'. Ensure it's a valid CSV.")
+        except Exception as e:
+            raise RuntimeError(f"An unexpected error occurred: {e}")
 
         # TODO: need to check if that accidentally drops the cancelled events
-        self.df = self.df.dropna(subset=[self.RSVPER_NAMES, ])
+        self.df = self.df.dropna(subset=[RSVPER_NAMES, ])
 
-        self.df[self.START_DATE] = pd.to_datetime(self.df[self.START_DATE], errors='coerce')
-        self.df[self.START_DATE] = self.df[self.START_DATE].dt.date   # convert datetime to date (time is not necessary)
-        self.df[self.RSVPER_NAMES] = self.df[self.RSVPER_NAMES].apply(lambda x: self.parse_rsvpers_string(x))
+        self.df[START_DATE] = pd.to_datetime(self.df[START_DATE], errors='coerce')
+        self.df[START_DATE] = self.df[START_DATE].dt.date   # convert datetime to date (time is not necessary)
+        self.df[RSVPER_NAMES] = self.df[RSVPER_NAMES].apply(lambda x: self.parse_rsvpers_string(x))
+        self.df[EVENT_TYPE] = self.df[EVENT_NAME].apply(lambda x: self.get_event_type(x))
+        self.df = self.df.sort_values(by=START_DATE, ascending=False)
 
-        self.df = self.df.sort_values(by=self.START_DATE, ascending=False)
-
-        if debug:
-            # Find the earliest date
-            earliest_date = self.df[self.START_DATE].min()
-
-            # Find the latest date
-            latest_date = self.df[self.START_DATE].max()
-
-            print(f'Earliest date: {earliest_date}')
-            print(f'Latest date: {latest_date}')
+        self.df = self.remove_canceled_event(self.df)
 
     @classmethod
     def parse_rsvpers_string(cls, rsvpers_str: str) -> dict:
@@ -100,3 +105,56 @@ class SeshData:
                      for name in names if len(name) > 0 and not name.isspace()]
             result[section_header] = names
         return result
+
+    @classmethod
+    def get_event_type(cls, event_name):
+        if re.search(r'Advanced Intermediate Clinic', event_name, re.IGNORECASE):
+            return "Advanced Intermediate Clinic"
+        elif re.search(r'Intermediate Clinic', event_name, re.IGNORECASE):
+            return "Intermediate Clinic"
+        elif re.search(r'Advanced Beginner Clinic', event_name, re.IGNORECASE):
+            return "Advanced Beginner Clinic"
+        elif re.search(r'Beginner Clinic', event_name, re.IGNORECASE):
+            return f"Beginner Clinic"
+        elif re.search(r'Round Robin - \d\.\d+ to \d\.\d+', event_name, re.IGNORECASE):
+            return re.findall(r'Round Robin - \d\.\d+ to \d\.\d+', event_name, re.IGNORECASE)[0]
+        elif re.search(r'DUPR Matches', event_name, re.IGNORECASE):
+            return EventType.DUPR_MATCHES
+        elif re.search(r'Getting Started', event_name, re.IGNORECASE):
+            return EventType.GETTING_STARTED
+        elif re.search(r'Ball Machine Session\s*\([0-9.,\s]+\)', event_name, re.IGNORECASE):
+            return EventType.BALL_MACHINE_SESSION
+        else:
+            return EventType.OTHER
+
+    @classmethod
+    def remove_canceled_event(cls, df):
+        """
+        Identifying and removing both canceled events and their corresponding events within the previous week.
+        """
+        # Gather a list of canceled events based on a specific token in the event name
+        cancelled_event_condition = df[EVENT_NAME].str.contains(SESH_CANCELLED_EVENT_TOKEN, case=False, na=False)
+        cancelled_event_df = df[cancelled_event_condition]
+
+        # Remove canceled events from the main DataFrame
+        df = df[~cancelled_event_condition]
+
+        indices_to_remove = []
+
+        # Iterate over each canceled event to find related events within the last week
+        for idx, cancelled_clinic_row in cancelled_event_df.iterrows():
+            cancellation_date = cancelled_clinic_row[START_DATE]
+            a_week_ago = cancellation_date - datetime.timedelta(days=7)
+            event_type = cancelled_clinic_row[EVENT_TYPE]
+            indices = df[(df[START_DATE] >= a_week_ago) &
+                         (df[START_DATE] < cancellation_date) &
+                         (df[EVENT_TYPE] == event_type)
+                         ].index.to_list()
+
+            # Accumulate indices of related events to remove
+            indices_to_remove.extend(indices)
+
+        # Drop the identified rows from the DataFrame
+        df.drop(indices_to_remove, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        return df
