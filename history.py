@@ -81,13 +81,17 @@ class AttendanceHistory:
 
 		return attendance_df
 
-	def get_df(self):
+	def get_df(self, attendee_names=None):
 		"""
 		Get the attendance history DataFrame.
 
 		:return: DataFrame where rows are attendees, columns are weekly attendance (True/False).
 		"""
-		return self.attendance_df
+		if attendee_names is None:
+			return self.attendance_df
+		else:
+			return self.get_small_df(self.attendance_df, attendee_names)
+
 
 	@classmethod
 	def get_small_df(cls, attendance_df, attendee_names):
