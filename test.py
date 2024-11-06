@@ -56,6 +56,25 @@ class TestParseRsvpersString(unittest.TestCase):
         }
         self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
 
+    def test_case1(self):
+        input_str = '"Lottery: Tami Tran,Min Chung",' \
+                    '"Attendees: Lisa Shea,Jian Yin,Linda Atwood,Alex Woo,Becky Sarabia,Katie Peng,' \
+                    'Mehrnaz Hada,Janet Berkowitz,May Yick,Doug Felt,Sabrina Lin,Mora Kan,Jeanne Hsu,' \
+                    'Diana Friedman,Jay Gitterman,Hui (Helen) Li",' \
+                    '"Attendees Waitlist: " Amy Jiang,Ellen Jaworski,Kathleen Lund,Ivy Tam,Helen Wong,' \
+                    'Susan Hanson,Maralissa Thomas,Keri Lung,Anne Silverstein,Elena Chiu,Victor Roytburd,' \
+                    'Meri Gruber'
+        expected_output = {
+            'Lottery': ['Tami Tran', 'Min Chung'],
+            'Attendees': ['Lisa Shea', 'Jian Yin', 'Linda Atwood', 'Alex Woo', 'Becky Sarabia', 'Katie Peng',
+                          'Mehrnaz Hada', 'Janet Berkowitz', 'May Yick', 'Doug Felt', 'Sabrina Lin', 'Mora Kan',
+                          'Jeanne Hsu', 'Diana Friedman', 'Jay Gitterman', 'Hui (Helen) Li', ],
+            'Attendees Waitlist': ['Amy Jiang', 'Ellen Jaworski', 'Kathleen Lund', 'Ivy Tam', 'Helen Wong',
+                                   'Susan Hanson', 'Maralissa Thomas', 'Keri Lung', 'Anne Silverstein',
+                                   'Elena Chiu', 'Victor Roytburd', 'Meri Gruber']
+        }
+        self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
+
 
 class TestRemoveCanceledEvent(unittest.TestCase):
 
@@ -147,11 +166,8 @@ class TestRemoveCanceledEvent(unittest.TestCase):
         # Mock the get_cancelled_event_name method to remove " - CANCELED"
 
     def test_remove_canceled_event(self):
-        print(self.df)
         # Execute the remove_canceled_event method
         self.df = SeshData.remove_canceled_event(self.df)
-
-        print(self.df)
 
         # Expected DataFrame after removing canceled events and related events
         expected_data = {
@@ -315,27 +331,48 @@ class TestLottery(unittest.TestCase):
 class TestCompleteLottery(unittest.TestCase):
     def setUp(self) -> None:
         sesh_data = SeshData('test_data/test.csv')
-        # self.event_date = datetime.datetime(2024, 6, 11)
-        date_str = '2024-06-11'
-        self.event_date = convert_date_str_to_obj(date_str)
-        self.event_type = 'Intermediate Clinic'
-
         self.manager = ClinicEventManager(sesh_data.df)
 
+    def check(self, event_date, event_type):
         # recreate signup list from old data
-        clinic_session = self.manager.get_event(event_date=self.event_date, event_type=self.event_type)
-        rsvper_names = clinic_session[RSVPER_NAMES].iloc[0]
-        self.names = rsvper_names.get(ATTENDEES, []) + rsvper_names.get(WAITLIST, [])
+        event = self.manager.get_event(event_date=event_date, event_type=event_type)
+        rsvper_names = event[RSVPER_NAMES].iloc[0]
+        names = rsvper_names.get(ATTENDEES, [])
 
-    def test_attendee_priority_computation(self):
-        events = self.manager.get_latest_events(event_date=self.event_date, event_type=self.event_type)
+        events = self.manager.get_latest_events(event_date=event_date, event_type=event_type)
         last_n_dates = events[START_DATE].to_list()
         attendance_history = AttendanceHistory(last_n_dates, self.manager.df)
-        sm_df = AttendanceHistory.get_small_df(attendance_history.get_df(), self.names)
+        sm_df = attendance_history.get_df(names)
+        with pd.option_context('display.max_columns', None):
+            print(sm_df)
         lottery = Lottery(attendance_df=sm_df)
-        winners = lottery.select_winners()
-        print(lottery.priority_df)
-        print('winners:', winners)
+        lottery.compute_priority()
+
+        priority_df = lottery.priority_df.reindex(names)
+        with pd.option_context('display.max_columns', None):
+            print(priority_df)
+        is_ascending = priority_df['Priority'].is_monotonic_increasing
+        self.assertEqual(is_ascending, True)
+
+    def test_priority_computation_case1(self):
+        event_date = convert_date_str_to_obj('2024-06-11')
+        event_type = 'Intermediate Clinic'
+        self.check(event_date, event_type)
+
+    def test_priority_computation_case2(self):
+        event_date = convert_date_str_to_obj('2024-06-04')
+        event_type = 'Intermediate Clinic'
+        self.check(event_date, event_type)
+
+    def test_priority_computation_case3(self):
+        event_date = convert_date_str_to_obj('2024-05-21')
+        event_type = 'Intermediate Clinic'
+        self.check(event_date, event_type)
+
+    def test_priority_computation_case4(self):
+        event_date = convert_date_str_to_obj('2024-04-23')
+        event_type = 'Intermediate Clinic'
+        self.check(event_date, event_type)
 
 
 # Run the tests
