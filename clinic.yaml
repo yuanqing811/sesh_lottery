@@ -1,0 +1,43 @@
+# clinic.yaml
+csv_filename: 'test_data/events_1059745565136654406_2024-11-07.csv'
+output_filedir: 'output'
+events:
+  - event:
+      type: Beginner Clinic
+      date: 2024-11-11
+    attendees:
+      max_count: 16
+      exclude_from_lottery: [] # empty list
+    attendance_history:
+      num_past_sessions: 3
+
+  - event:
+      type: Advanced Beginner Clinic
+      date: 2024-11-11
+    attendees:
+      max_count: 16
+      exclude_from_lottery: [] # empty list  attendance_history:
+    attendance_history:
+      num_past_sessions: 3
+
+  - event:
+      type: Intermediate Clinic
+      date: 2024-11-12
+    attendees:
+      max_count: 16
+      exclude_from_lottery: [ ] # empty list
+    attendance_history:
+      num_past_sessions: 3
+    exclude_from_lottery: []  # empty list
+
+  - event:
+      type: Advanced Intermediate Clinic
+      date: 2024-11-13
+    attendees:
+      max_count: 16
+      exclude_from_lottery: [ ] # empty list
+    attendance_history:
+      num_past_sessions: 3
+    exclude_from_lottery: []  # empty list
+
+

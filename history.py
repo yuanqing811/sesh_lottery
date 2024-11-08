@@ -81,7 +81,7 @@ class AttendanceHistory:
 
 		return attendance_df
 
-	def get_df(self, attendee_names=None):
+	def get_df_for_attendees(self, attendee_names=None):
 		"""
 		Get the attendance history DataFrame.
 

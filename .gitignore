@@ -23,6 +23,7 @@ htmlcov/
 
 # Exclude test data directory
 test_data/
+output/
 
 # IDE/Editor files
 .vscode/

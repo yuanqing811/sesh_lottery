@@ -4,8 +4,7 @@ from sesh import SeshData, ATTENDEES, WAITLIST, EVENT_NAME, EVENT_TYPE, START_DA
 from history import AttendanceHistory
 from lottery import Lottery  # Assuming Lottery class is saved in lottery.py
 import datetime
-from event import ClinicEventManager
-from sesh_util import convert_date_str_to_obj
+from sesh_util import convert_date_str_to_obj, SeshRSVPParser
 
 
 # Unit test_data class for parse_rsvpers_string
@@ -17,7 +16,7 @@ class TestParseRsvpersString(unittest.TestCase):
             'Lottery': ['Doug Felt'],
             'Attendees': ['Jane Smith', 'John Doe', 'Alice Wonderland']
         }
-        self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
+        self.assertEqual(SeshRSVPParser.parse(input_str), expected_output)
 
     def test_empty_sections(self):
         input_str = '"Lottery: ","Attendees: "  '
@@ -25,7 +24,7 @@ class TestParseRsvpersString(unittest.TestCase):
             'Lottery': [],
             'Attendees': []
         }
-        self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
+        self.assertEqual(SeshRSVPParser.parse(input_str), expected_output)
 
     def test_only_names_without_nicknames(self):
         input_str = '"Lottery: ","Attendees: Jane Smith,John Doe,Alice Wonderland"'
@@ -33,7 +32,7 @@ class TestParseRsvpersString(unittest.TestCase):
             'Lottery': [],
             'Attendees': ['Jane Smith', 'John Doe', 'Alice Wonderland']
         }
-        self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
+        self.assertEqual(SeshRSVPParser.parse(input_str), expected_output)
 
     def test_mixed_names(self):
         input_str = '"Lottery: ", "Attendees: Jane Smith, Carrie "Cross-Court" Anderson, Rich Castro"'
@@ -41,7 +40,7 @@ class TestParseRsvpersString(unittest.TestCase):
             'Lottery': [],
             'Attendees': ['Jane Smith', 'Carrie Anderson', 'Rich Castro']
         }
-        self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
+        self.assertEqual(SeshRSVPParser.parse(input_str), expected_output)
 
     def test_misplaced_double_quotes(self):
         input_str = '"Attendees: Jane Tse,Ann ODonnell,Katya Sheinin,Susan Li,Nancy Panayides,Monica Chan,' \
@@ -54,7 +53,7 @@ class TestParseRsvpersString(unittest.TestCase):
                           'Cannie Seto', 'Art LaHait', 'Monica Stone', 'Beth Marer-Garcia', 'Megan Ancker'],
             'Attendees Waitlist': ['Teresa Flagg', 'Gloria Taffee', 'Margie Harrington']
         }
-        self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
+        self.assertEqual(SeshRSVPParser.parse(input_str), expected_output)
 
     def test_case1(self):
         input_str = '"Lottery: Tami Tran,Min Chung",' \
@@ -73,7 +72,7 @@ class TestParseRsvpersString(unittest.TestCase):
                                    'Susan Hanson', 'Maralissa Thomas', 'Keri Lung', 'Anne Silverstein',
                                    'Elena Chiu', 'Victor Roytburd', 'Meri Gruber']
         }
-        self.assertEqual(SeshData.parse_rsvpers_string(input_str), expected_output)
+        self.assertEqual(SeshRSVPParser.parse(input_str), expected_output)
 
 
 class TestRemoveCanceledEvent(unittest.TestCase):
@@ -330,19 +329,23 @@ class TestLottery(unittest.TestCase):
 
 class TestCompleteLottery(unittest.TestCase):
     def setUp(self) -> None:
-        sesh_data = SeshData('test_data/test.csv')
-        self.manager = ClinicEventManager(sesh_data.df)
+        self.sesh_data = SeshData('test_data/test.csv')
 
-    def check(self, event_date, event_type):
+    def _test_using_old_records(self, event_date, event_type):
         # recreate signup list from old data
-        event = self.manager.get_event(event_date=event_date, event_type=event_type)
-        rsvper_names = event[RSVPER_NAMES].iloc[0]
-        names = rsvper_names.get(ATTENDEES, [])
 
-        events = self.manager.get_latest_events(event_date=event_date, event_type=event_type)
+        event = self.sesh_data.get_event(event_date=event_date, event_type=event_type)
+        names = event[RSVPER_NAMES].get(ATTENDEES, [])
+
+        # get the last n dates where the events of specified type happened
+        events = self.sesh_data.get_latest_events(
+            before_event_date=event_date,
+            event_type=event_type,
+            max_sessions=3)
         last_n_dates = events[START_DATE].to_list()
-        attendance_history = AttendanceHistory(last_n_dates, self.manager.df)
-        sm_df = attendance_history.get_df(names)
+        clinic_events = self.sesh_data.get_clinic_events()
+        attendance_history = AttendanceHistory(last_n_dates, clinic_events)
+        sm_df = attendance_history.get_df_for_attendees(names)
         with pd.option_context('display.max_columns', None):
             print(sm_df)
         lottery = Lottery(attendance_df=sm_df)
@@ -357,22 +360,22 @@ class TestCompleteLottery(unittest.TestCase):
     def test_priority_computation_case1(self):
         event_date = convert_date_str_to_obj('2024-06-11')
         event_type = 'Intermediate Clinic'
-        self.check(event_date, event_type)
+        self._test_using_old_records(event_date, event_type)
 
     def test_priority_computation_case2(self):
         event_date = convert_date_str_to_obj('2024-06-04')
         event_type = 'Intermediate Clinic'
-        self.check(event_date, event_type)
+        self._test_using_old_records(event_date, event_type)
 
     def test_priority_computation_case3(self):
         event_date = convert_date_str_to_obj('2024-05-21')
         event_type = 'Intermediate Clinic'
-        self.check(event_date, event_type)
+        self._test_using_old_records(event_date, event_type)
 
     def test_priority_computation_case4(self):
         event_date = convert_date_str_to_obj('2024-04-23')
         event_type = 'Intermediate Clinic'
-        self.check(event_date, event_type)
+        self._test_using_old_records(event_date, event_type)
 
 
 # Run the tests

@@ -16,6 +16,7 @@ class Lottery:
 		# filter attendance_df based on person_names
 		self.attendance_df = attendance_df
 		self.priority_df = None  # This will store the DataFrame with priority scores
+		self.result = None
 
 	def compute_priority(self):
 		"""
@@ -43,6 +44,13 @@ class Lottery:
 
 		# Sort by priority score in ascending order (the lowest score has the highest priority)
 		self.priority_df.sort_values(by='Score', ascending=True, inplace=True)
+		# self.attendance_df.reindex(self.priority_df.index.to_list())
+		self.attendee_stats_df = pd.concat([self.priority_df, self.attendance_df, ], axis=1)
+
+		# Set a new integer index
+		self.attendee_stats_df = self.attendee_stats_df.reset_index()
+		self.attendee_stats_df.rename(columns={'index': 'rsvper_names'}, inplace=True)
+		# self.attendee_stats_df.reset_index(drop=True, inplace=True)
 
 	def select_winners(self, num_winners=16):
 		"""
@@ -62,7 +70,7 @@ class Lottery:
 		else:
 			attendee_list = priority_list[:num_winners]
 			waitlist = priority_list[num_winners:]
-		return {ATTENDEES: attendee_list, WAITLIST: waitlist}
+		self.result = {ATTENDEES: attendee_list, WAITLIST: waitlist}
 
 	def get_priority_scores(self):
 		"""
