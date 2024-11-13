@@ -12,14 +12,14 @@ def convert_date_str_to_obj(date_str):
 
 
 CLINIC = 'clinic'
-ADV_INT_CLINIC = 'Advanced Intermediate Clinic'
-INT_CLINIC = 'Intermediate Clinic'
-ADV_BEG_CLINIC = 'Advanced Beginner Clinic'
-BEG_CLINIC = 'Beginner Clinic'
-ROUNDROBIN = 'round robin'
+ADV_INT_CLINIC = 'Clinic-AI'
+INT_CLINIC = 'Clinic-I'
+ADV_BEG_CLINIC = 'Clinic-AB'
+BEG_CLINIC = 'Clinic-B'
+ROUNDROBIN = 'RR'
 BALL_MACHINE_SESSION = 'Ball Machine Session'
-DUPR_MATCHES = 'DUPR Matches'
-GETTING_STARTED = 'Getting Started'
+DUPR_MATCHES = 'DUPR'
+GETTING_STARTED = 'GS'
 OTHER = 'other'
 
 
