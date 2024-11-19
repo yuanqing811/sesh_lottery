@@ -81,6 +81,9 @@ class SeshRSVPParser:
 		:return: dict: Dictionary with headers as keys and lists of names as values
 		"""
 
+		if not isinstance(rsvpers_str, str):
+			return {}
+
 		result = {}
 		sections = re.findall(SeshRSVPParser.section_pattern, rsvpers_str, flags=re.VERBOSE)
 

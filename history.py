@@ -2,6 +2,7 @@ import datetime
 import pandas as pd
 from sesh import START_DATE, RSVPER_NAMES, EVENT_TYPE
 from sesh_util import ADV_BEG_CLINIC, ADV_INT_CLINIC, BEG_CLINIC, INT_CLINIC
+from logging_config import log_dataframe_info
 
 
 class EventParticipationTracker:
@@ -16,7 +17,8 @@ class EventParticipationTracker:
 							and 'Attendees' column (list of attendee names).
 		"""
 		self.events_df = events_df.copy()
-		self.df = None
+		df_index = pd.Index([], name=self.PARTICIPANT)
+		self.df = pd.DataFrame(index=df_index)
 		self.flags = None
 
 	@staticmethod
@@ -32,7 +34,7 @@ class EventParticipationTracker:
 		week_range = pd.date_range(start=start_of_week, periods=7)
 		return week_range
 
-	def _generate_history_for_date_range(self, date_range):
+	def _generate_history_for_date_range(self, date_range) -> None:
 		# Initialize an empty dictionary to hold attendance records for each attendee
 		attendance_data = {}
 
@@ -45,6 +47,8 @@ class EventParticipationTracker:
 
 		for idx, event in events_in_date_range.iterrows():
 			attendees_in_event = event[RSVPER_NAMES]
+			if not isinstance(attendees_in_event, list):
+				continue
 			# Update the attendance data dictionary
 			for attendee in attendees_in_event:
 				if attendee not in attendance_data:
@@ -55,14 +59,10 @@ class EventParticipationTracker:
 
 		# Convert the attendance data dictionary to a DataFrame
 		df = pd.DataFrame.from_dict(attendance_data, orient='index')
+		self.df = pd.concat([self.df, df], axis=1, join='outer')
+		self.df = self.df[sorted(self.df.columns, reverse=True)]
 
-		# Reset index to add attendee names as a column
-		df.reset_index(inplace=True)
-		df.rename(columns={'index': self.PARTICIPANT}, inplace=True)
-		df.set_index(self.PARTICIPANT, inplace=True)
-		return df
-
-	def _generate_history(self, dates):
+	def _generate_history(self, dates) -> pd.DataFrame:
 		"""
 		Generate the history DataFrame with attendees as rows and weekly attendance as columns.
 
@@ -70,42 +70,18 @@ class EventParticipationTracker:
 		"""
 
 		dates = sorted(dates, reverse=True)
-		date_ranges = []
 		date_range_labels = []
 
 		for event_date in dates:
 			date_range = self._get_week_date_range(event_date)
 			date_range_label = f"{date_range[0].date()} to {date_range[-1].date()}"
-
-			if date_range_label in date_range_labels:
-				continue
-
-			date_ranges.append(date_range)
 			date_range_labels.append(date_range_label)
 
-		dfs = []
+			if date_range_label not in self.df.columns:
+				self._generate_history_for_date_range(date_range)
 
-		for date_range in date_ranges:
-			# Determine the week date range as a Pandas date range
-			week_range_df = self._generate_history_for_date_range(date_range)
-			dfs.append(week_range_df)
-
-		attendance_df = pd.concat(dfs, axis=1, join="outer")
-		attendance_df.columns = pd.MultiIndex.from_product([[self.HISTORY], attendance_df.columns])
+		attendance_df = self.df[date_range_labels].copy()
 		return attendance_df
-
-	@staticmethod
-	def count_unique_non_nan(row):
-		flattened_values = pd.Series(
-			[item for cell in row.dropna() for item in (cell if isinstance(cell, list) else [cell])])
-		return flattened_values.nunique()
-
-	def check_for_level_switching(self):
-		# Add the new nested column to the DataFrame
-		# self.df['flags', 'level_switching'] = False
-		self.df[('flags', 'level_switching')] = self.df[self.HISTORY].apply(
-			lambda row: '*' if self.count_unique_non_nan(row) > 1 else None, axis=1)
-		return self.df[[('flags', 'level_switching')]]
 
 	def get_history(self, dates, attendee_names):
 		"""
@@ -113,12 +89,12 @@ class EventParticipationTracker:
 
 		:return: DataFrame where rows are attendees, columns are weekly attendance (True/False).
 		"""
-		self.df = self._generate_history(dates)
-
-		return self.get_small_df(self.df, attendee_names)
+		df = self._generate_history(dates)
+		df.columns = pd.MultiIndex.from_product([[self.HISTORY], df.columns])
+		return self._get_small_df(df, attendee_names)
 
 	@classmethod
-	def get_small_df(cls, attendance_df, attendee_names):
+	def _get_small_df(cls, attendance_df, attendee_names):
 		# Identify any missing attendees and add them with default (False) attendance records
 		existing_attendees = set(attendance_df.index)
 		missing_attendees = list(set(attendee_names) - existing_attendees)

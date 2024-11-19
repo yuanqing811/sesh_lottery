@@ -1,4 +1,4 @@
-# PAPC Lottery Program
+# Lottery Program
 
 A Python-based tool for managing and conducting a lottery system for event attendees,
 enabling priority-based selection and efficient session handling.
@@ -7,7 +7,7 @@ enabling priority-based selection and efficient session handling.
 
 ## Background
 
-At the Palo Alto Pickleball Club, demand for event slots often exceeds availability.
+At popular events, demand for event slots often exceeds availability.
 To ensure fairness, we prefer a lottery system over a first-come-first-serve approach
 for event registration, blending random selection with attendance priority.
 
@@ -24,7 +24,10 @@ to automate participant selection, This will streamline and simplify weekly lott
 ## Features
 
 - **Event and Attendance Management**: Track attendees and their history.
-- **Lottery System**: Select attendees based on defined priorities.
+- **Lottery System**: Select attendees and waitlist based on defined priorities.
+
+## Prerequisites
+   Ensure you have the following installed on your systePYthon 3.9 or later
 
 ## Installation
 
@@ -38,19 +41,74 @@ to automate participant selection, This will streamline and simplify weekly lott
    ```bash
    pip install -r requirements.txt
    ```
+## Configuration
+   This program uses a YAML file to define the parameters for performing 
+   lotteries for all the clinic. An example YAML file structure is provided below:
 
+**Example YAML File**
+```bash
+# clinic.yaml
+csv_filename: 'test_data/events_1059745565136654406_2024-11-14.csv'
+output_dir: 'output'
+exclude_from_lottery: []
+start_date: 2024-11-18
+recurring_interval_in_days: 7 # weekly
+
+events:
+  Clinic-B:
+    lottery:
+      order: 0
+      max_attendee_count: 16
+    attendance_history:
+      num_past_sessions: 3
+
+  Clinic-AB:
+    lottery:
+      order: 1
+      max_attendee_count: 16
+    attendance_history:
+      num_past_sessions: 3
+
+  Clinic-I:
+    lottery:
+      order: 3
+      max_attendee_count: 16
+    attendance_history:
+      num_past_sessions: 3
+
+  Clinic-AI:
+    lottery:
+      order: 2
+      max_attendee_count: 16
+    attendance_history:
+      num_past_sessions: 3
+```
 ## Usage
 
-1. **Event Setup**: Define events in `event.py`.
-2. **Run Lottery**: Initialize and conduct a lottery using `lottery.py`.
-3. **Session Management**: Use `sesh.py` and `sesh_util.py` for session handling.
+1. **Run Lottery**: Conduct weekly clinic lottery using `clinic_lottery.py`.
+   ```bash
+   python clinic_lottery.py <yaml_filename>
+   ```
+   **Example Command**
+   ```bash
+   python clinic_lottery.py weekly_clinic_lottery.yaml 
+   ```
+   This command reads the csv file specified in `weekly_clinic_lottery.yaml`
+   and processes it to retrieve past clinic attendance and lottery information,
+   chooses future clinic attendees and waitlist based on that information.
 
-## Files
-
-- **`event.py`**: Manages event creation and attendee records.
-- **`lottery.py`**: Main lottery logic.
-- **`sesh.py`** & **`sesh_util.py`**: Session utilities.
-- **`test.py`**: Unit tests for functionality validation.
+## Example Workflow
+1. Download the .csv file from Discord Sesh.
+2. Prepare the configuration file (e.g., `weekly_clinic_lottery.yaml` ).
+   - Update the .csv file name to the latest.
+   - Adjust the lottery week start date. Leave empty to choose next Monday.
+   - You can also adjust the order in which clinic lotteries are run.
+   - You can adjust the maximum number of attendees for each clinic.
+2. Run the program with the configuration file as an argument.
+3. The program will: 
+   - Read the configuration details from the YAML file.
+   - Parse the csv file from the specified `csv_filename`.
+   - Generates the lottery results to the specified `output_dir`.
 
 ## Testing
 

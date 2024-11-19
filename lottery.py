@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
-from history import EventParticipationTracker
+import logging
 from sesh import ATTENDEES, WAITLIST
+from utils import generate_unique_filename
 
 
 class Lottery:
@@ -10,18 +11,27 @@ class Lottery:
 	COUNT_COL = 'Count'
 	PRIORITY_COL = 'Priority'
 
-	def __init__(self, attendance_df: pd.DataFrame) -> None:
+	def __init__(self, event_type: str, attendance_df: pd.DataFrame, low_priority_participants: list) -> None:
 		"""
-		Initialize the Lottery with an attendance history DataFrame.
+		Computes a priority score for each participant based on his/her attendance
+		Orders participants based on a randomized prioritized score
+		Flags individuals who are signing up for multiple lotteries and changing their levels
 
+		:param event_type: string representing the type of event, such as "Clinic-AB"
 		:param attendance_df: DataFrame with attendees as rows and weekly attendance as columns (True/False).
+		:param low_priority_participants: list of strings representing a list of people who should be deprioritized
 		"""
+
+		self.logger = logging.getLogger(self.__class__.__name__)
 
 		# filter attendance_df based on person_names
+		self.event_type = event_type
 		self.attendance_df = attendance_df
+		self.low_priority_participants = low_priority_participants
 		self.num_attendees = self.attendance_df.shape[0]
 		self.num_past_events = self.attendance_df.shape[1]
 		self.priority_df = None  # This will store the DataFrame with priority scores
+		self.flags_df = None
 		self.attendee_stats_df = None
 		self.result = None
 
@@ -56,35 +66,67 @@ class Lottery:
 
 		# Sort by priority score in ascending order (the lowest score has the highest priority)
 		self.priority_df.sort_values(by='Score', ascending=True, inplace=True)
-		self.attendee_stats_df = pd.concat([self.priority_df, self.attendance_df, ], axis=1)
+
+	def select_attendees_and_waitlist(self, num_participants: int, write_to_csv=None):
+		"""
+		Selects the top num_winners participants based on priority score and returns their names
+		as the lottery attendees and put the rest of the participants on a waitlist.
+
+		:param num_participants: Number of winners to select.
+		:param write_to_csv: if not None, the attendee statistics will be written to a csv file.
+		:return: List of names of lottery winners.
+		"""
+
+		if self.priority_df is None:
+			self.compute_priority()  # Ensure priority scores are computed
+			self.lower_participant_priorities()
+			self.flag_participants()
+
+		self.attendee_stats_df = pd.concat(
+			[self.flags_df, self.priority_df, self.attendance_df, ],
+			axis=1, keys=['flags', 'priority', 'attendance'])
 
 		# Set a new integer index
 		self.attendee_stats_df = self.attendee_stats_df.reset_index()
 		self.attendee_stats_df.index = pd.RangeIndex(start=1, stop=len(self.attendee_stats_df) + 1, step=1)
-		self.attendee_stats_df.rename(columns={'index': 'rsvper_names'}, inplace=True)
+		self.attendee_stats_df.rename(columns={'index': self.PTCPNT_COL}, inplace=True)
 
-	def select_winners(self, num_winners=16):
-		"""
-		Selects the top num_winners attendees based on priority score and returns their names as the lottery winners.
+		nested_index = [
+			(ATTENDEES if i <= num_participants else WAITLIST, i)
+			for i in range(1, len(self.attendee_stats_df)+1)]
+		nested_index = pd.MultiIndex.from_tuples(nested_index, names=["Group", "Index"])
+		self.attendee_stats_df.index = nested_index
 
-		:param num_winners: Number of winners to select.
-		:return: List of names of lottery winners.
-		"""
-		if self.priority_df is None:
-			self.compute_priority()  # Ensure priority scores are computed
-
-		# Select the top rsvpers as attendees and assign the rest to waitlist
-		priority_list = self.priority_df.index.tolist()
-		if len(priority_list) <= num_winners:
-			attendee_list = priority_list
-			waitlist = []
-		else:
-			attendee_list = priority_list[:num_winners]
-			waitlist = priority_list[num_winners:]
-		self.result = {ATTENDEES: attendee_list, WAITLIST: waitlist}
+		if write_to_csv is not None:
+			self.logger.info("Writing the lottery participants' statistics to a csv file")
+			write_to_csv = generate_unique_filename(write_to_csv)
+			self.attendee_stats_df.to_csv(write_to_csv, index=True)
 
 	def set_priority(self, attendee, priority):
 		self.priority_df.loc[attendee] = priority
+
+	def lower_participant_priorities(self):
+		event_participants = self.priority_df.index.tolist()
+		for participant in event_participants:
+			if participant in self.low_priority_participants:
+				self.set_priority(participant, priority=100)
+
+	def flag_participants(self):
+		# check participants for level switching
+		lottery_participants = self.priority_df.index.tolist()
+		multi_signup_df = pd.DataFrame(index=lottery_participants)
+		multi_signup_df['multi_signup'] = [
+			"*" if partcipant in self.low_priority_participants else
+			None for partcipant in lottery_participants
+		]
+
+		level_switch_df = pd.DataFrame(index=self.attendance_df.index.tolist())
+		level_switch_df['level_switch'] = [
+			'*' if self.count_unique_non_nan(row) > 1 else None
+			for idx, row in self.attendance_df.iterrows()
+		]
+
+		self.flags_df = pd.concat([multi_signup_df, level_switch_df], join='outer', axis=1)
 
 	def get_priority_scores(self):
 		"""
@@ -97,3 +139,10 @@ class Lottery:
 		if self.priority_df is None:
 			self.compute_priority()
 		return self.priority_df
+
+	def count_unique_non_nan(self, row):
+		row = row.dropna()
+		attended_event_types = [item for cell in row for item in (cell if isinstance(cell, list) else [cell])]
+		flattened_values = set(attended_event_types + [self.event_type])
+		return len(flattened_values)
+

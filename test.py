@@ -1,5 +1,8 @@
+import os
 import unittest
+import tempfile
 import pandas as pd
+from utils import generate_unique_filename  # Replace with the actual module name
 from sesh import SeshData, ATTENDEES, WAITLIST, EVENT_NAME, EVENT_TYPE, START_DATE, RSVPER_NAMES
 from history import EventParticipationTracker
 from lottery import Lottery  # Assuming Lottery class is saved in lottery.py
@@ -246,7 +249,7 @@ class TestLottery(unittest.TestCase):
         self.attendance_df.set_index('Attendee', inplace=True)
         self.attendance_df.rename(columns={'index': 'Attendee'}, inplace=True)
         self.attendee_names = ['Alice', 'Bob', 'Charlie', 'Mary']
-        self.lottery = Lottery(attendance_df=self.attendance_df)
+        self.lottery = Lottery(event_type='whatever', attendance_df=self.attendance_df)
 
     def test_priority_score_calculation(self):
         # Test that priority scores are calculated correctly
@@ -274,7 +277,7 @@ class TestLottery(unittest.TestCase):
     def test_select_winners(self):
         # Test selecting the top 16 attendees
         num_winners = 16
-        winners = self.lottery.select_winners(num_winners=num_winners)
+        winners = self.lottery.select_attendees_and_waitlist(num_winners)
         attendees = winners[ATTENDEES]
         waitlist = winners[WAITLIST]
 
@@ -295,9 +298,9 @@ class TestLottery(unittest.TestCase):
         # Test behavior when fewer than 16 attendees are in the DataFrame
         small_attendance_df = self.attendance_df.head(small_attendance_size)  # Only 2 attendees
         attendee_names = ['Alice', 'Bob', 'Charlie', 'Mary']
-        df = EventParticipationTracker.get_small_df(attendance_df=small_attendance_df, attendee_names=attendee_names)
+        df = EventParticipationTracker._get_small_df(attendance_df=small_attendance_df, attendee_names=attendee_names)
         small_lottery = Lottery(attendance_df=df)
-        small_lottery.select_winners(num_winners=num_winners)
+        small_lottery.select_attendees_and_waitlist(num_participants=num_winners)
         attendees = small_lottery.result[ATTENDEES]
         waitlist = small_lottery.result[WAITLIST]
         # Expect all attendees to be winners since we have fewer than 16
@@ -310,9 +313,9 @@ class TestLottery(unittest.TestCase):
         # Test case where all attendees have zero attendance
         zero_attendance_df = pd.DataFrame(False, index=self.attendance_df.index, columns=self.attendance_df.columns)
         attendee_names = ['Alice', 'Bob', 'Charlie', 'Mary', 'James']
-        df = EventParticipationTracker.get_small_df(attendance_df=zero_attendance_df, attendee_names=attendee_names)
+        df = EventParticipationTracker._get_small_df(attendance_df=zero_attendance_df, attendee_names=attendee_names)
         zero_lottery = Lottery(attendance_df=df)
-        zero_lottery.select_winners(num_winners=num_winners)
+        zero_lottery.select_attendees_and_waitlist(num_participants=num_winners)
         attendees = zero_lottery.result[ATTENDEES]
         waitlist = zero_lottery.result[WAITLIST]
 
@@ -333,8 +336,9 @@ class TestCompleteLottery(unittest.TestCase):
 
     def _test_using_old_records(self, event_date, event_type):
         # recreate signup list from old data
+        event = self.sesh_data.df[(self.sesh_data.df[START_DATE] == event_date) &
+                                  (self.sesh_data.df[EVENT_TYPE] == event_type)]
 
-        event = self.sesh_data.get_event(event_date=event_date, event_type=event_type)
         names = event[RSVPER_NAMES].get(ATTENDEES, [])
 
         # get the last n dates where the events of specified type happened
@@ -348,7 +352,7 @@ class TestCompleteLottery(unittest.TestCase):
         sm_df = attendance_history.get_history(names, last_n_dates)
         with pd.option_context('display.max_columns', None):
             print(sm_df)
-        lottery = Lottery(attendance_df=sm_df)
+        lottery = Lottery(event_type='whatever', attendance_df=sm_df)
         lottery.compute_priority()
 
         priority_df = lottery.priority_df.reindex(names)
@@ -377,6 +381,74 @@ class TestCompleteLottery(unittest.TestCase):
         event_date = convert_date_str_to_obj('2024-04-23')
         event_type = 'Intermediate Clinic'
         self._test_using_old_records(event_date, event_type)
+
+
+class TestGenerateUniqueFilename(unittest.TestCase):
+    def setUp(self):
+        """
+        Set up a temporary directory for testing.
+        """
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.base_path = self.test_dir.name
+
+    def tearDown(self):
+        """
+        Clean up the temporary directory after tests.
+        """
+        self.test_dir.cleanup()
+
+    def test_no_existing_file(self):
+        """
+        Test when no file exists with the given name.
+        """
+        base_filename = os.path.join(self.base_path, "output.csv")
+        result = generate_unique_filename(base_filename)
+        self.assertEqual(result, base_filename)
+
+    def test_existing_file(self):
+        """
+        Test when the base file already exists.
+        """
+        base_filename = os.path.join(self.base_path, "output.csv")
+        # Create a file with the base name
+        open(base_filename, 'w').close()
+
+        result = generate_unique_filename(base_filename)
+        self.assertEqual(result, os.path.join(self.base_path, "output(1).csv"))
+
+    def test_multiple_existing_files(self):
+        """
+        Test when multiple files with the same base name and indices exist.
+        """
+        base_filename = os.path.join(self.base_path, "output.csv")
+        # Create multiple files
+        open(base_filename, 'w').close()
+        open(os.path.join(self.base_path, "output(1).csv"), 'w').close()
+        open(os.path.join(self.base_path, "output(2).csv"), 'w').close()
+
+        result = generate_unique_filename(base_filename)
+        self.assertEqual(result, os.path.join(self.base_path, "output(3).csv"))
+
+    def test_base_filename_with_directory(self):
+        """
+        Test when the base filename includes a directory path.
+        """
+        subdir = os.path.join(self.base_path, "subdir")
+        os.makedirs(subdir, exist_ok=True)
+
+        base_filename = os.path.join(subdir, "output.csv")
+        open(base_filename, 'w').close()  # Create the file
+
+        result = generate_unique_filename(base_filename)
+        self.assertEqual(result, os.path.join(subdir, "output(1).csv"))
+
+    def test_no_directory_in_base_filename(self):
+        """
+        Test when no directory is provided in the base filename.
+        """
+        base_filename = "output.csv"
+        result = generate_unique_filename(base_filename)
+        self.assertEqual(result, "output.csv")  # Should not append if no file exists
 
 
 # Run the tests
