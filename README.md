@@ -27,7 +27,7 @@ to automate participant selection, This will streamline and simplify weekly lott
 - **Lottery System**: Select attendees and waitlist based on defined priorities.
 
 ## Prerequisites
-   Ensure you have the following installed on your systePYthon 3.9 or later
+   Ensure you have the following installed on your system: Python 3.9 or later
 
 ## Installation
 
