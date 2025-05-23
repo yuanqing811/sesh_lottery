@@ -1,5 +1,4 @@
 import re
-from enum import Enum
 from datetime import datetime
 
 
@@ -9,6 +8,13 @@ def convert_date_str_to_obj(date_str):
 
 	date_obj = datetime.strptime(date_str, event_date_regex).date()
 	return date_obj
+
+
+def extract_server_and_event_id(url):
+	match = re.search(r"/dashboard/(\d+)/events/edit/(\d+)", url)
+	if match:
+		return match.group(1), match.group(2)
+	return None, None
 
 
 CLINIC = 'clinic'
@@ -72,8 +78,8 @@ class SeshRSVPParser:
 		(?=\s*(?:,\s*{next_section_header_pattern})|$)  	# Lookahead for the next section header or end of string
 		"""
 
-	@staticmethod
-	def parse(rsvpers_str: str) -> dict:
+	@classmethod
+	def parse(cls, rsvpers_str: str) -> dict:
 		"""
 		Parse a string containing lists of attendees under different headers.
 		Returns a dictionary with headers as keys and lists of names as values.
@@ -85,15 +91,20 @@ class SeshRSVPParser:
 			return {}
 
 		result = {}
-		sections = re.findall(SeshRSVPParser.section_pattern, rsvpers_str, flags=re.VERBOSE)
+		sections = re.findall(cls.section_pattern, rsvpers_str, flags=re.VERBOSE)
 
 		# Step 2: Find all matches using the pattern
 		for section_header, section_value in sections:
 			cleaned_section_value = section_value.strip(' ,"')
-			names = re.split(r'\s*,\s*', cleaned_section_value)
-			names = [
-				re.sub(SeshRSVPParser.nickname_pattern, ' ', name.strip())
-				for name in names if len(name) > 0 and not name.isspace()
-			]
+			full_names = re.split(r'\s*,\s*', cleaned_section_value)
+			names = cls.remove_nicknames(full_names)
 			result[section_header] = names
 		return result
+
+	@classmethod
+	def remove_nicknames(cls, names):
+		names = [
+			re.sub(cls.nickname_pattern, ' ', name.strip())
+			for name in names if len(name) > 0 and not name.isspace()
+		]
+		return names

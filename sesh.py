@@ -8,11 +8,14 @@ from logging_config import log_dataframe_info
 START_DATE = 'start date'
 END_DATE = 'end date'
 EVENT_NAME = 'name'
+EVENT_ID = 'event_id'
 EVENT_TYPE = 'type'
 EVENT_STATUS = 'status'
 RSVPER_NAMES = 'rsvpers'
+FULL_RSVPER_NAMES = 'rsvpers'
 LOTTERY = 'Lottery'
 ATTENDEES = 'Attendees'
+ATTENDEE = 'Attendee'
 WAITLIST = 'Attendees Waitlist'
 RSVPER_LINK = 'rsvper_link'
 EDIT_LINK = 'edit_link'
@@ -47,8 +50,9 @@ class SeshData:
         except Exception as e:
             raise RuntimeError(f"An unexpected error occurred: {e}")
         self.logger.info(f'Finished loading event data from .csv file into a Dataframe')
-        self.logger.info("Removing columns 'channel', 'author', 'rsvper_link', 'edit_link', 'discord_link' which are not used in lottery")
-        self.df.drop([RSVPER_LINK, EDIT_LINK, DISCORD_LINK, CHANNEL, AUTHOR], axis=1, inplace=True)
+
+        self.logger.info("Removing columns 'channel', 'author', 'edit_link', 'discord_link' which are not used in lottery")
+        self.df.drop([EDIT_LINK, DISCORD_LINK, CHANNEL, AUTHOR], axis=1, inplace=True)
         log_dataframe_info(self.df)
         self.logger.info(f'Converting event dates from string to datetime.date objects')
         self.df[START_DATE] = pd.to_datetime(self.df[START_DATE], errors='coerce')
@@ -56,6 +60,11 @@ class SeshData:
 
         self.logger.info(f'Parsing Rsvper_names string and convert it into a dictionary')
         self.df[RSVPER_NAMES] = self.df[RSVPER_NAMES].apply(lambda x: SeshRSVPParser.parse(x))
+        #todo: need to keep a mapping of full names and names
+        # self.df[RSVPER_NAMES] = self.df[FULL_RSVPER_NAMES].apply(lambda x: SeshRSVPPARSER.remove_nicknames(x))
+
+        # sometimes the values attendee and attendees are used interchangeably, change all to attendees
+        self.df[RSVPER_NAMES] = self.df[RSVPER_NAMES].apply(lambda x: self.rename_attendee_key(x))
 
         self.logger.info(f'Identifying the types of events based on event name')
         self.df[EVENT_TYPE] = self.df[EVENT_NAME].apply(lambda x: SeshEventTypeClassifier.classify(x))
@@ -64,6 +73,11 @@ class SeshData:
         self.df = self.df.sort_values(by=START_DATE, ascending=False)
         log_dataframe_info(self.df)
 
+    @staticmethod
+    def rename_attendee_key(d: dict) -> dict:
+        if isinstance(d, dict) and ATTENDEE in d:
+            d[ATTENDEES] = d.pop(ATTENDEE)
+        return d
     @staticmethod
     def remove_canceled_event(df: pd.DataFrame) -> pd.DataFrame:
         """

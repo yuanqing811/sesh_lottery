@@ -1,8 +1,7 @@
 # Lottery Program
 
 A Python-based tool for managing and conducting a lottery system for event attendees,
-enabling priority-based selection and efficient session handling.
-
+enabling priority-based selection.
 ---
 
 ## Background
@@ -27,7 +26,35 @@ to automate participant selection, This will streamline and simplify weekly lott
 - **Lottery System**: Select attendees and waitlist based on defined priorities.
 
 ## Prerequisites
-   Ensure you have the following installed on your system: Python 3.9 or later
+   Ensure you have the following installed on your system: 
+   Step 1: Install Python 3.9 (if not already installed)
+   Make sure Python 3.9 is installed on your system. You can check by running:
+   ```bash
+   python3.9 --version
+   ```
+   If Python 3.9 is not installed on your system, running the command would typically result in one of the following outputs:
+1. Command Not Found
+On most systems, your would see an error like:
+   ```bash 
+   bash: python3.9: command not found
+   ```
+   This indicates that Python3.9 is not installed or is not in your system's PATH.
+      
+2. No Such File or Directory
+Some systems might give a similar error:
+   ```bash
+   python3.9: No such file or directory
+   ```
+   If Python3.9 is not installed, download it from the offical Python website or use your package manager (e.g., apt, brew, etc.).
+   After installation, re-run the command to confirm:
+   ```bash
+   python3.9 --version
+   ```
+   It should now return something like:
+   ```bash
+   Python 3.9.x
+   ```
+   x being an integer.
 
 ## Installation
 
@@ -74,7 +101,7 @@ events:
       order: 3
       max_attendee_count: 16
     attendance_history:
-      num_past_sessions: 3
+      num_past_sessions: 4
 
   Clinic-AI:
     lottery:

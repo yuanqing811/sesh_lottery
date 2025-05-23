@@ -1,8 +1,8 @@
 # clinic.yaml
-csv_filename: 'test_data/events_1059745565136654406_2024-11-14.csv'
+csv_filename: 'test_data/events_1059745565136654406_2025-05-15.csv'
 output_dir: 'output'
 exclude_from_lottery: []
-start_date: 2024-11-18
+start_date: 2025-05-15
 recurring_interval_in_days: 7 # weekly
 
 events:
@@ -16,20 +16,20 @@ events:
   Clinic-AB:
     lottery:
       order: 1
-      max_attendee_count: 16
+      max_attendee_count: 24
     attendance_history:
       num_past_sessions: 3
 
   Clinic-I:
     lottery:
-      order: 3
+      order: 2
       max_attendee_count: 16
     attendance_history:
-      num_past_sessions: 3
+      num_past_sessions: 4
 
   Clinic-AI:
     lottery:
-      order: 2
+      order: 3
       max_attendee_count: 16
     attendance_history:
       num_past_sessions: 3

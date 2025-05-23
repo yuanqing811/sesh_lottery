@@ -1,8 +1,6 @@
 import datetime
 import pandas as pd
-from sesh import START_DATE, RSVPER_NAMES, EVENT_TYPE
-from sesh_util import ADV_BEG_CLINIC, ADV_INT_CLINIC, BEG_CLINIC, INT_CLINIC
-from logging_config import log_dataframe_info
+from sesh import START_DATE, RSVPER_NAMES, EVENT_TYPE, ATTENDEES
 
 
 class EventParticipationTracker:
@@ -46,7 +44,7 @@ class EventParticipationTracker:
 			]
 
 		for idx, event in events_in_date_range.iterrows():
-			attendees_in_event = event[RSVPER_NAMES]
+			attendees_in_event = event[RSVPER_NAMES, ATTENDEES]
 			if not isinstance(attendees_in_event, list):
 				continue
 			# Update the attendance data dictionary
