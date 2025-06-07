@@ -4,7 +4,7 @@ import os
 import sys
 
 import yaml
-
+from gsheet_util import write_df_to_google_sheet
 
 # This custom class forces inline (flow style) for specific values
 class InlineList(list):
@@ -20,9 +20,11 @@ yaml.add_representer(InlineList, represent_inline_list)
 
 from sesh import SeshData, START_DATE, RSVPER_NAMES, EVENT_TYPE, LOTTERY, ATTENDEES, RSVPER_LINK
 from sesh_util import extract_server_and_event_id
+from sesh_util import convert_date_str_to_obj
+from gsheet_util import write_df_to_google_sheet
+
 from lottery import Lottery
 from history import EventParticipationTracker
-from sesh_util import convert_date_str_to_obj
 from logging_config import configure_logging
 from whosin import coach_huddle_whosin
 from sesh_dashboard.event import SeshDashboardEvent
@@ -55,9 +57,8 @@ class ClinicLottery:
             recurring_interval_in_days=self.recurring_interval_in_days
         )
 
-        output_filename = self.get_output_filename()
-        if os.path.exists(output_filename):
-            os.remove(output_filename)
+        # output_filename = self.get_output_filename()
+        output_filename = 'test'
 
         whosin_filename = f'{self.output_dir}/whosin.txt'
         if os.path.exists(whosin_filename):
@@ -112,11 +113,10 @@ class ClinicLottery:
 
             self.track_rsvpers(rsvper_names)
 
-            table_name = f'{event_type}_{event_date}'
-            self.write_table_to_csv(
+            self.write_table_to_gsheet(
                 lottery=lottery,
-                table_name=table_name,
-                csv_filename=output_filename,
+                sheet_name=output_filename,
+                table_name=f'{event_type}_{event_date}'
             )
 
             self.write_event_data_to_file(
@@ -163,7 +163,7 @@ class ClinicLottery:
     def get_output_filename(self):
         print(self.lottery_events)
         first_event_date = self.lottery_events.iloc[0][START_DATE]
-        output_filename = f'{self.output_dir}/Clinics_{first_event_date}.csv'
+        output_filename = f'{self.output_dir}/Clinics_{first_event_date}'
         return output_filename
 
     @staticmethod
@@ -188,8 +188,38 @@ class ClinicLottery:
             if name not in self.all_rsvper_names:
                 self.all_rsvper_names.append(name)
 
-    def write_table_to_csv(self, lottery, table_name, csv_filename):
+    def write_table_to_gsheet(self, lottery, sheet_name, table_name):
+        output_columns = [
+            (lottery.PTCPNT_COL_NAME, ''),
+            (lottery.PRIORITY_COL_NAME, lottery.SCORE_COL_NAME)
+        ]
 
+        # Check which of them exist in the DataFrame
+        attendance_columns = [
+            col for col in lottery.participant_df.columns
+            if isinstance(col, tuple) and col[0] == lottery.ATTENDANCE_COL_NAME
+        ]
+
+        output_columns = output_columns + attendance_columns
+
+        output_df = lottery.participant_df[output_columns].copy()
+        flags_col = self.merge_flags(lottery)
+
+        flags_col_name = ('Flags', '')
+        output_df[flags_col_name] = flags_col
+        insert_after_col_name = (lottery.PTCPNT_COL_NAME, '')
+        insert_after = output_columns.index(insert_after_col_name)
+        insert_at = insert_after + 1
+
+        output_columns.insert(insert_at, flags_col_name)
+
+        write_df_to_google_sheet(
+            df=output_df[output_columns],
+            sheet_name=sheet_name,
+            worksheet_title=table_name
+        )
+
+    def write_table_to_csv(self, lottery, table_name, csv_filename):
         # self.logger.info("Writing the lottery participants' statistics to a csv file")
         output_columns = [
             (lottery.PTCPNT_COL_NAME, ''),
@@ -298,5 +328,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = process_yaml_file(args.filename)
 
-    #todo:download the csv
+    #todo: download the csv
     clinic_Lottery = ClinicLottery(config)

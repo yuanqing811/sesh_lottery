@@ -308,7 +308,7 @@ class SeshDashboardEvent:
 if __name__ == '__main__':
     import yaml
 
-    with open("output/Clinic_sesh_dashboard_data.yaml", "r") as f:
+    with open("../output/Clinic_sesh_dashboard_data.yaml", "r") as f:
         events = list(yaml.safe_load_all(f))
         for event in events:
             server_id = event['server_id']

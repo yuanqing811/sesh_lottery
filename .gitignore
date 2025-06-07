@@ -38,3 +38,6 @@ output/
 
 # Documentation build artifacts
 docs/_build/
+
+# Google Sheets Credentials
+config/papclottery-aabf0d892e93.json
