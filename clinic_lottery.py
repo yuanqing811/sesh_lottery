@@ -4,7 +4,7 @@ import os
 import sys
 
 import yaml
-from gsheet_util import write_df_to_google_sheet
+
 
 # This custom class forces inline (flow style) for specific values
 class InlineList(list):
@@ -21,7 +21,7 @@ yaml.add_representer(InlineList, represent_inline_list)
 from sesh import SeshData, START_DATE, RSVPER_NAMES, EVENT_TYPE, LOTTERY, ATTENDEES, RSVPER_LINK
 from sesh_util import extract_server_and_event_id
 from sesh_util import convert_date_str_to_obj
-from gsheet_util import write_df_to_google_sheet
+from gsheet_util import write_df_to_google_sheet, read_spreadsheet_to_df
 
 from lottery import Lottery
 from history import EventParticipationTracker
@@ -57,8 +57,8 @@ class ClinicLottery:
             recurring_interval_in_days=self.recurring_interval_in_days
         )
 
-        # output_filename = self.get_output_filename()
-        output_filename = 'test'
+        output_filename = self.get_output_filename()
+        # output_filename = 'test'
 
         whosin_filename = f'{self.output_dir}/whosin.txt'
         if os.path.exists(whosin_filename):
@@ -163,7 +163,7 @@ class ClinicLottery:
     def get_output_filename(self):
         print(self.lottery_events)
         first_event_date = self.lottery_events.iloc[0][START_DATE]
-        output_filename = f'{self.output_dir}/Clinics_{first_event_date}'
+        output_filename = f'Clinics_{first_event_date}'
         return output_filename
 
     @staticmethod
@@ -327,6 +327,8 @@ if __name__ == "__main__":
     # Parse the arguments
     args = parser.parse_args()
     config = process_yaml_file(args.filename)
+    late_cancel_or_absence = read_spreadsheet_to_df(
+        spreadsheet_name='PAPC Clinic No show and late cancel')
 
     #todo: download the csv
     clinic_Lottery = ClinicLottery(config)

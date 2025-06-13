@@ -10,3 +10,4 @@ oauth2client~=4.1.3
 google-api-python-client~=2.118.0
 chromedriver-autoinstaller~=0.6.4
 websocket-client~=1.8.0
+webdriver-manager~=4.0.1

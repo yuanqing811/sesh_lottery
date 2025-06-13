@@ -2,9 +2,14 @@ import logging
 import os
 import time
 from datetime import datetime
-from utils import create_chrome_driver_with_logging
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from .selenium_utils import (
+    create_chrome_driver_with_logging,
+    check_login_status,
+    wait_for_element,
+    hide_tooltips,
+    check_rate_limit,
+    retry_with_rate_limit_check
+)
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
@@ -98,6 +103,22 @@ class CSVDownloader:
         self.logger.error("❌ Timed out waiting for download to complete")
         return None
 
+    @retry_with_rate_limit_check
+    def _click_download_csv(self, driver):
+        """Click the Download CSV button with rate limit handling"""
+        self.logger.info("Looking for Download CSV button")
+        export_button = wait_for_element(
+            driver,
+            "//button[contains(., 'Download CSV')]",
+            by=By.XPATH,
+            clickable=True
+        )
+        self.logger.info("Found Download CSV button")
+        hide_tooltips(driver)  # Hide any tooltips before clicking
+        export_button.click()
+        time.sleep(5)  # Wait for download to start
+        return True
+
     def run(self):
         """Execute the CSV download process"""
         driver = None
@@ -109,22 +130,23 @@ class CSVDownloader:
             time.sleep(5)
             self.logger.info(f"Current page title: {driver.title}")
             self.logger.info(f"Current URL: {driver.current_url}")
-            self.logger.info("Looking for Download CSV button")
-            wait = WebDriverWait(driver, 10)
+
+            # Check login status using shared utility
+            if not check_login_status(driver):
+                return {"success": False, "error": "Not logged in to sesh.fyi"}
+
+            # Click download button with rate limit handling
             try:
-                export_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Download CSV')]")))
-                self.logger.info("Found Download CSV button")
+                self._click_download_csv(driver)
+                print("✅ CSV Exported Successfully!")
             except TimeoutException:
                 self.logger.error("Could not find Download CSV button. Available buttons:")
                 buttons = driver.find_elements(By.TAG_NAME, "button")
                 for button in buttons:
                     self.logger.info(f"Button text: {button.text}")
                 raise
-            self.logger.info("Clicking Download CSV button")
-            export_button.click()
-            time.sleep(5)
-            print("✅ CSV Exported Successfully!")
-            result_path = self.wait_and_rename_download()  # <== Rename step
+
+            result_path = self.wait_and_rename_download()
             if result_path:
                 return {"success": True, "file_path": result_path}
             else:

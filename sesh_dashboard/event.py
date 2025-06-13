@@ -8,6 +8,9 @@
 # Write scripts that automatically import the exported CSV files into your database.
 # identify the chrome session
 
+# /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="$HOME/Library/Application Support/Google/Chrome/SeleniumProfile"
+# go to sesh.fyi and login
+
 import time
 
 from selenium.webdriver.common.by import By
@@ -15,7 +18,15 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from sesh_dashboard.utils import create_chrome_driver_with_logging, chunk_list
+from sesh_dashboard.selenium_utils import (
+    create_chrome_driver_with_logging,
+    check_login_status,
+    wait_for_element,
+    hide_tooltips,
+    check_rate_limit,
+    retry_with_rate_limit_check
+)
+from sesh_dashboard.utils import chunk_list
 
 
 class SeshDashboardEvent:
@@ -25,16 +36,8 @@ class SeshDashboardEvent:
         self.driver = create_chrome_driver_with_logging(profile_path=self.profile_path)
 
     def is_logged_into_sesh(self):
-        try:
-            # Look for a UI element that only appears when logged in
-            self.driver.get(self.base_url)
-
-            WebDriverWait(self.driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".navbar-user-avatar"))
-            )
-            return True
-        except:
-            return False
+        """Check if user is logged in to sesh.fyi"""
+        return check_login_status(self.driver, self.base_url)
 
     def hide_tooltips(self):
         self.driver.execute_script("""
@@ -77,67 +80,67 @@ class SeshDashboardEvent:
         rate_limited = self.check_browser_logs_for_rate_limit()
         return rate_limited
 
+    @retry_with_rate_limit_check
     def open_add_user_modal(self, modal_name, retries=2):
         if modal_name not in ['Attendee', 'Lottery']:
             raise Exception(f'unknown group {modal_name}')
 
-        # Simulate hovering over the “Add” button (a span) and then trigger a click to open the modal
-        # — reliably, even in React.
+        print(f"Looking for Add button for {modal_name} list...")
+        
+        # Try different selectors for the Add button
+        selectors = [
+            f"//span[contains(., '{modal_name}')]/ancestor::div[contains(@class, 'items-center')]/div//span[text()='Add']",  # Original selector
+            f"//span[text()='Add' and ancestor::div[contains(., '{modal_name}')]]",  # Simpler XPath
+            f"//button[contains(., 'Add {modal_name}')]",  # Button with text
+            f"//span[text()='Add']"  # Any Add span
+        ]
 
-        # 1. Wait for the "Add" span near the "modal_name" text to appear
-        wait = WebDriverWait(self.driver, 10)
-
-        for attempt in range(retries + 1):
+        add_span = None
+        for selector in selectors:
             try:
-                add_span_html = f"//span[contains(., '{modal_name}')]/ancestor::div[contains(@class, 'items-center')]/div//span[text()='Add']"
-                add_span = wait.until(EC.presence_of_element_located((
-                    By.XPATH, add_span_html
-                )))
-
-                # 2. Hover over the span (to trigger tooltips, dropdowns, or React events)
-                ActionChains(self.driver).move_to_element(add_span).perform()
-
-                # Small pause for any hover UI, such as tooltip, to activate and render fully
-                time.sleep(0.5)
-
-                # 3. Force-hide any tooltip that may have appeared
-                # Sesh (like many modern UIs) attaches tooltips to the DOM separately and
-                # overlays them with a z-index. Even if the tooltip is not visibly “blocking”
-                # the button, it may still consume mouse events like click.
-                self.hide_tooltips()
-
-                # 4. Dispatch a JS mouse click to trigger React modal
-                self.driver.execute_script("""
-                  arguments[0].dispatchEvent(new MouseEvent('click', {
-                    bubbles: true, cancelable: true, view: window
-                  }));
-                """, add_span)
-
-                # 4. Wait for the modal to open
-                # First wait for the modal container to appear (even before it's active)
-                wait.until(
-                    EC.presence_of_element_located((
-                        By.CSS_SELECTOR, "div.modal"
-                    ))
+                print(f"Trying selector: {selector}")
+                add_span = wait_for_element(
+                    self.driver,
+                    selector,
+                    by=By.XPATH,
+                    clickable=True,
+                    timeout=5
                 )
-
-                # Then wait for it to become active
-                modal = wait.until(
-                    EC.visibility_of_element_located((
-                        By.CSS_SELECTOR, "div.modal.is-active"
-                    ))
-                )
-                print("✅ Modal Opened Successfully!")
-                return modal
+                if add_span:
+                    print(f"Found Add button with selector: {selector}")
+                    break
             except TimeoutException:
-                print(f"⚠️ Modal failed to open (attempt {attempt + 1})")
-                if self.is_rate_limited():
-                    print("⏸️ Pausing 30 seconds to recover from rate limit...")
-                    time.sleep(30)
+                continue
 
-                time.sleep(0.5)
-        print(f"❌ Modal failed to open after {retries} attempts. — possible lockout or throttling, giving up...")
-        return None
+        if not add_span:
+            print("❌ Could not find Add button. Available elements:")
+            elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'Add') or contains(text(), 'Attendee') or contains(text(), 'Lottery')]")
+            for elem in elements:
+                print(f"Element text: {elem.text}")
+            raise TimeoutException("Could not find Add button")
+
+        # 2. Hover over the span (to trigger tooltips, dropdowns, or React events)
+        ActionChains(self.driver).move_to_element(add_span).perform()
+        time.sleep(0.5)  # Small pause for any hover UI
+
+        # 3. Hide any tooltips that may have appeared
+        hide_tooltips(self.driver)
+
+        # 4. Dispatch a JS mouse click to trigger React modal
+        self.driver.execute_script("""
+            arguments[0].dispatchEvent(new MouseEvent('click', {
+                bubbles: true, cancelable: true, view: window
+            }));
+        """, add_span)
+
+        # 5. Wait for the modal to open and become active
+        modal = wait_for_element(
+            self.driver,
+            "div.modal.is-active",
+            timeout=10
+        )
+        print("✅ Modal Opened Successfully!")
+        return modal
 
     def prompt_to_select_multiple_options(self, option_texts):
         # print all the options and ask the user to select
@@ -162,24 +165,27 @@ class SeshDashboardEvent:
 
     def add_users_from_modal(self, list_name, users):
         """
-        Select users from the Sesh “Add Users” modal using Selenium.
+        Select users from the Sesh "Add Users" modal using Selenium.
         1. Open the modal
-        2. Type a user’s name
+        2. Type a user's name
         3. Wait for the dropdown options
         4. Select the matching user
         Repeat as needed
         """
-
+        print(users)
         modal = self.open_add_user_modal(list_name)
 
         # Find the input box inside the modal
-        input_box = modal.find_element(By.CSS_SELECTOR, "input.sesh-dropdown__input")
+        input_box = wait_for_element(
+            modal,
+            "input.sesh-dropdown__input",
+            clickable=True
+        )
         self.driver.execute_script("arguments[0].focus();", input_box)
-        wait = WebDriverWait(self.driver, 10)
 
         for user in users:
-            # 1. Clear search text (safe — won't touch selected users)
-            input_box.clear()  # OR input_box.send_keys(Keys.CONTROL + "a", Keys.DELETE)
+            # 1. Clear search text
+            input_box.clear()
             time.sleep(0.2)
 
             # 2. Type a user's name
@@ -188,9 +194,11 @@ class SeshDashboardEvent:
 
             # 3. Wait for the dropdown option(s) to appear
             try:
-                wait.until(EC.presence_of_element_located((
-                    By.CSS_SELECTOR, "div.sesh-dropdown__option"
-                )))
+                options = wait_for_element(
+                    self.driver,
+                    "div.sesh-dropdown__option",
+                    timeout=10
+                )
             except TimeoutException:
                 print(f"❌ No dropdown options available (zero matches) for {user}")
                 raise
@@ -199,7 +207,7 @@ class SeshDashboardEvent:
             options = self.driver.find_elements(By.CSS_SELECTOR, "div.sesh-dropdown__option")
             option_texts = [opt.text.strip() for opt in options]
 
-            # Step 2: Try to locate at least one option
+            # Handle different cases
             if not options:
                 print(f"❌ No options available for {user}")
             elif len(options) == 1:
@@ -227,88 +235,54 @@ class SeshDashboardEvent:
 
         self.submit_and_close_modal()
 
+    @retry_with_rate_limit_check
     def submit_and_close_modal(self):
-        # 🔍 Step 1: Find the modal (already opened before this step)
-        modal = WebDriverWait(self.driver, 10).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "div.modal.is-active"))
+        # Find the modal
+        modal = wait_for_element(
+            self.driver,
+            "div.modal.is-active",
+            timeout=10
         )
 
-        # 🧭 Step 2: Locate and click the "Add Users" button inside the modal
-        try:
-            add_user_button = WebDriverWait(modal, 10).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    # ".//span[text()='Add Users']/ancestor::button"
-                    ".//button[.//span[contains(text(),'Add Users')]]"
-                ))
-            )
+        # Find and click the "Add Users" button
+        add_user_button = wait_for_element(
+            modal,
+            ".//button[.//span[contains(text(),'Add Users')]]",
+            by=By.XPATH,
+            clickable=True
+        )
 
-            # 🖱️ Step 3: Click the button via JavaScript (React-safe)
-            # This avoids issues with overlays or animation transitions.
-            self.driver.execute_script("arguments[0].click();", add_user_button)
-            print("✅ Clicked 'Add Users'")
-        except:
-            print("❌ Could not find or click 'Add Users' button")
-            raise
-
-        # 2. Wait for modal to disappear
-        wait = WebDriverWait(self.driver, 10)
-        try:
-            wait.until(
-                EC.invisibility_of_element_located((
-                    By.CSS_SELECTOR, "div.modal.is-active"
-                ))
-            )
-            print("✅ Modal closed successfully")
-            return
-        except:
-            print("❌ Modal did not close after submitting")
-
-        # if modal is not already closed
-        modal_close = modal.find_element(By.CSS_SELECTOR, "button.modal-close")
-        self.driver.execute_script("arguments[0].click();", modal_close)
-        print("❎ Modal close button clicked.")
-
-        # Wait until the modal is no longer visible
-        try:
-            wait.until(
-                EC.invisibility_of_element_located((
-                    By.CSS_SELECTOR, "div.modal.is-active"
-                ))
-            )
-            print("✅ Modal has been closed.")
-        except:
-            print("❌ Modal did not close after submitting")
-            raise
+        # Click the button via JavaScript
+        self.driver.execute_script("arguments[0].click();", add_user_button)
+        time.sleep(1)  # Wait for the modal to close
 
     def add_users_to_list(self, event_id, list_name, users, debug=True):
-        event_url = f'{self.base_url}/events/attendees/{event_id}'
-        try:
-            # Step 1: Open the Sesh Dashboard event list page
-            self.driver.get(event_url)
+        """Add users to a specific list in an event"""
+        if debug:
+            print(f"Adding {len(users)} users to {list_name} list in event {event_id}")
+        
+        # Navigate to the event page
+        self.driver.get(f"{self.base_url}/events/attendees/{event_id}")
+        time.sleep(2)  # Wait for page load
+        
+        # Add users through the modal
+        self.add_users_from_modal(list_name, users)
 
-            # Wait until the page is loaded (optional but recommended)
-            self.driver.implicitly_wait(10)
-
-            batches = chunk_list(users, 5)
-            for i, batch in enumerate(batches, 1):
-                print(f"Batch {i}: {batch}")
-                self.add_users_from_modal(list_name, batch)
-
-        except Exception as e:
-            print("❌ Error:", e)
-        finally:
-            if not debug:
-                self.driver.quit()
-
-    def add_attendees_to_event(self, event_id, attendees, debug=True):
-        self.add_users_to_list(event_id=event_id, list_name='Attendee', users=attendees, debug=debug)
+    def add_attendees_to_event(self, event_id, attendees, list_name='Attendee', debug=True):
+        """Add attendees to an event"""
+        if debug:
+            print(f"Adding {len(attendees)} attendees to event {event_id}")
+        
+        # Add attendees in chunks to avoid rate limiting
+        for chunk in chunk_list(attendees, 5):
+            self.add_users_to_list(event_id, list_name, chunk, debug)
+            time.sleep(2)  # Small delay between chunks
 
 
 if __name__ == '__main__':
     import yaml
 
-    with open("../output/Clinic_sesh_dashboard_data.yaml", "r") as f:
+    with open("output/Clinic_sesh_dashboard_data.yaml", "r") as f:
         events = list(yaml.safe_load_all(f))
         for event in events:
             server_id = event['server_id']
@@ -316,9 +290,15 @@ if __name__ == '__main__':
             add_to_lottery = event['add_to_lottery']
             add_to_attendee = event['add_to_attendee']
             sesh_event_add_attendees = SeshDashboardEvent(server_id=server_id)
-            sesh_event_add_attendees.add_users_to_list(event_id=event_id,
-                                                       users=add_to_lottery,
-                                                       list_name='Lottery')
-            sesh_event_add_attendees.add_users_to_list(event_id=event_id,
-                                                       users=add_to_attendee,
-                                                       list_name='Attendee')
+            if add_to_lottery:
+                sesh_event_add_attendees.add_attendees_to_event(
+                    event_id=event_id, 
+                    attendees=add_to_lottery,
+                    list_name='Lottery'
+                )
+            if add_to_attendee:
+                sesh_event_add_attendees.add_attendees_to_event(
+                    event_id=event_id,
+                    attendees=add_to_attendee,
+                    list_name='Attendee'
+                )

@@ -1,8 +1,8 @@
 # clinic.yaml
-csv_filename: 'test_data/events_1059745565136654406_2025-05-29.csv'
+csv_filename: 'test_data/events_1059745565136654406_2025-06-12.csv'
 output_dir: 'output'
 exclude_from_lottery: []
-start_date: 2025-05-29
+start_date: 2025-06-12
 recurring_interval_in_days: 7 # weekly
 
 events:

@@ -40,11 +40,17 @@ def get_or_create_spreadsheet(client, spreadsheet_name):
         spreadsheet = client.create(spreadsheet_name)
         print(f"Spreadsheet '{spreadsheet_name}' created.")
 
-    # Get the default "Sheet1"
-    default_worksheet = spreadsheet.sheet1
-
-    # Delete it
-    spreadsheet.del_worksheet(default_worksheet)
+        # Create a new sheet before deleting the default one
+        spreadsheet.add_worksheet(title='Data', rows=1000, cols=26)
+        
+        try:
+            # Now we can safely delete the default sheet
+            default_worksheet = spreadsheet.sheet1
+            spreadsheet.del_worksheet(default_worksheet)
+            print("Default sheet deleted successfully.")
+        except Exception as e:
+            print(f"Warning: Could not delete default sheet: {e}")
+            print("Continuing with default sheet...")
 
     return spreadsheet
 
@@ -141,7 +147,7 @@ def write_df_to_google_sheet(
 def append_df_to_google_sheet(
         df, sheet_name,
         worksheet_title='Sheet1',
-        credentials_path='credentials.json',
+        credentials_path='config/papclottery-aabf0d892e93.json',
         include_column_header=True):
     """
     Appends a DataFrame to the next available row of a Google Sheet worksheet.
@@ -180,7 +186,7 @@ def append_df_with_title_to_google_sheet(
     section_title,
     sheet_name,
     worksheet_title='Sheet1',
-    credentials_path='credentials.json',
+    credentials_path='config/papclottery-aabf0d892e93.json',
     include_column_header=True
 ):
     """
